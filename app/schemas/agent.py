@@ -50,6 +50,7 @@ class ExecutionRunCreateResponse(BaseModel):
 
 
 class ExecutionEventItem(BaseModel):
+    event_id: str | None = None
     resource_id: str
     artifact_id: str
     status: Literal["pending", "running", "success", "failed", "skipped", "cancelled", "outdated"]

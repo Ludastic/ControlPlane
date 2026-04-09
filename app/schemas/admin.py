@@ -8,11 +8,48 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 
-class AdminLoginResponse(BaseModel):
+class AdminTokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "Bearer"
     expires_in: int = Field(default=3600, ge=1)
+
+
+class AdminLoginResponse(AdminTokenResponse):
+    pass
+
+
+class AdminRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class AdminMeResponse(BaseModel):
+    user_id: str
+    username: str
+    role: str
+    is_active: bool
+
+
+class AgentTokenResponse(BaseModel):
+    host_id: str
+    agent_token: str
+    rotated_at: datetime
+
+
+class AuditLogEntryResponse(BaseModel):
+    audit_id: str
+    actor_user_id: str | None = None
+    actor_username: str
+    action: str
+    entity_type: str
+    entity_id: str | None = None
+    details: dict | None = None
+    created_at: datetime
+
+
+class AuditLogListResponse(BaseModel):
+    items: list[AuditLogEntryResponse]
+    total: int = Field(ge=0)
 
 
 class HostResponse(BaseModel):
@@ -36,12 +73,26 @@ class InventoryResponse(BaseModel):
     data: dict
 
 
+class InventoryHistoryItem(BaseModel):
+    snapshot_version: int = Field(ge=1)
+    collected_at: datetime
+    data: dict
+
+
+class InventoryHistoryResponse(BaseModel):
+    host_id: str
+    items: list[InventoryHistoryItem]
+    total: int = Field(ge=0)
+
+
 class ExecutionRunResponse(BaseModel):
     run_id: str
     host_id: str
     state_revision: int = Field(ge=1)
     started_at: datetime
+    reported_at: datetime | None = None
     events_count: int = Field(ge=0)
+    aggregate_status: str
 
 
 class ExecutionRunListResponse(BaseModel):

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import Response
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -32,6 +33,8 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        if exc.status_code == 304:
+            return Response(status_code=304)
         payload = ErrorResponse(
             error={
                 "code": "HTTP_ERROR",
