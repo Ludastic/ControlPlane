@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, Security, status
 from fastapi.responses import Response as RawResponse
 
 from app.api.dependencies import get_control_plane_service
+from app.api.security import agent_bearer_scheme, build_authorization_header
 from app.schemas.agent import (
     AgentHeartbeatRequest,
     AgentHeartbeatResponse,
@@ -34,20 +35,20 @@ def register_agent(
 @router.post("/heartbeat", response_model=AgentHeartbeatResponse)
 def heartbeat(
     payload: AgentHeartbeatRequest,
-    authorization: str | None = Header(default=None),
+    credentials=Security(agent_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> AgentHeartbeatResponse:
-    return service.heartbeat(token=authorization, payload=payload)
+    return service.heartbeat(token=build_authorization_header(credentials), payload=payload)
 
 
 @router.get("/desired-state", response_model=DesiredState)
 def get_desired_state(
     response: Response,
-    authorization: str | None = Header(default=None),
+    credentials=Security(agent_bearer_scheme),
     if_none_match: str | None = Header(default=None, alias="If-None-Match"),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> DesiredState:
-    desired_state = service.get_desired_state(token=authorization)
+    desired_state = service.get_desired_state(token=build_authorization_header(credentials))
     etag = f"state-{desired_state.revision}"
     response.headers["ETag"] = etag
     if if_none_match == etag:
@@ -58,19 +59,19 @@ def get_desired_state(
 @router.get("/artifacts/{artifact_id}", response_model=ArtifactMetadataResponse)
 def get_artifact_metadata(
     artifact_id: str,
-    authorization: str | None = Header(default=None),
+    credentials=Security(agent_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> ArtifactMetadataResponse:
-    return service.get_artifact_metadata(token=authorization, artifact_id=artifact_id)
+    return service.get_artifact_metadata(token=build_authorization_header(credentials), artifact_id=artifact_id)
 
 
 @router.get("/artifacts/{artifact_id}/download")
 def download_artifact(
     artifact_id: str,
-    authorization: str | None = Header(default=None),
+    credentials=Security(agent_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> RawResponse:
-    artifact = service.download_artifact(token=authorization, artifact_id=artifact_id)
+    artifact = service.download_artifact(token=build_authorization_header(credentials), artifact_id=artifact_id)
     return RawResponse(
         content=artifact["content"],
         media_type=artifact["content_type"],
@@ -81,30 +82,30 @@ def download_artifact(
 @router.put("/inventory", response_model=AgentInventoryResponse)
 def update_inventory(
     payload: dict,
-    authorization: str | None = Header(default=None),
+    credentials=Security(agent_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> AgentInventoryResponse:
-    return service.update_inventory(token=authorization, payload=payload)
+    return service.update_inventory(token=build_authorization_header(credentials), payload=payload)
 
 
 @router.post("/execution-runs", response_model=ExecutionRunCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_execution_run(
     payload: ExecutionRunCreateRequest,
-    authorization: str | None = Header(default=None),
+    credentials=Security(agent_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> ExecutionRunCreateResponse:
-    return service.create_execution_run(token=authorization, payload=payload)
+    return service.create_execution_run(token=build_authorization_header(credentials), payload=payload)
 
 
 @router.post("/execution-runs/{run_id}/events", response_model=ExecutionEventsResponse, status_code=status.HTTP_202_ACCEPTED)
 def report_execution_events(
     run_id: str,
     payload: ExecutionEventsRequest,
-    authorization: str | None = Header(default=None),
+    credentials=Security(agent_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> ExecutionEventsResponse:
     return service.record_execution_events(
-        token=authorization,
+        token=build_authorization_header(credentials),
         run_id=run_id,
         payload=payload,
     )

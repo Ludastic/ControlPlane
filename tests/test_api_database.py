@@ -8,9 +8,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from app.api.dependencies import get_control_plane_service
+from app.core import readiness as readiness_module
 from app.core.settings import settings
-from app.db.session import SessionLocal, engine
+from app.db import init_db as init_db_module
 from app.main import app
 from app.models.artifact import Artifact
 from app.models.group import Group, HostGroupMembership
@@ -35,23 +38,28 @@ def _db_admin_headers(client: TestClient, username: str = "dbadmin", password: s
     return {"Authorization": f"Bearer {token}"}
 
 
-def _reset_database_with_migrations() -> None:
-    if settings.database_url.startswith("sqlite:///"):
-        engine.dispose()
-        database_path = Path(settings.database_url.removeprefix("sqlite:///"))
-        if database_path.exists():
-            database_path.unlink()
+def _reset_database_with_migrations(database_url: str) -> None:
     config = Config("alembic.ini")
     config.set_main_option("script_location", "alembic")
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+    config.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(config, "head")
 
 
 @pytest.fixture
-def db_client() -> Generator[TestClient, None, None]:
-    _reset_database_with_migrations()
+def db_client(tmp_path: Path) -> Generator[TestClient, None, None]:
+    original_database_url = settings.database_url
+    test_database_url = f"sqlite:///{(tmp_path / 'control_plane_test.db').as_posix()}"
+    settings.database_url = test_database_url
+    _reset_database_with_migrations(test_database_url)
 
-    session = SessionLocal()
+    test_engine = create_engine(test_database_url, future=True, connect_args={"check_same_thread": False})
+    TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False, future=True)
+    original_init_engine = init_db_module.engine
+    original_readiness_engine = readiness_module.engine
+    init_db_module.engine = test_engine
+    readiness_module.engine = test_engine
+
+    session = TestSessionLocal()
     session.add(
         Host(
             id="host_db_01",
@@ -162,7 +170,7 @@ def db_client() -> Generator[TestClient, None, None]:
     session.close()
 
     def _service_override() -> Generator[ControlPlaneService, None, None]:
-        db_session = SessionLocal()
+        db_session = TestSessionLocal()
         bundle = SqlAlchemyRepositoryBundle(db_session)
         try:
             yield ControlPlaneService(repository_bundle=bundle, seed_demo_data=False)
@@ -177,7 +185,10 @@ def db_client() -> Generator[TestClient, None, None]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-    engine.dispose()
+    init_db_module.engine = original_init_engine
+    readiness_module.engine = original_readiness_engine
+    settings.database_url = original_database_url
+    test_engine.dispose()
 
 
 def test_admin_hosts_list_from_database(db_client: TestClient) -> None:
@@ -345,12 +356,16 @@ def test_agent_token_rotate_and_revoke_flow_on_database_backend(db_client: TestC
 
 def test_effective_policies_and_desired_state_from_database(db_client: TestClient) -> None:
     effective_response = db_client.get("/api/v1/admin/hosts/host_db_01/effective-policies", headers=_db_admin_headers(db_client))
+    compliance_response = db_client.get("/api/v1/admin/hosts/host_db_01/compliance", headers=_db_admin_headers(db_client))
     state_response = db_client.get(
         "/api/v1/agent/desired-state",
         headers={"Authorization": "Bearer db-token"},
     )
 
     assert effective_response.status_code == 200
+    assert compliance_response.status_code == 200
+    assert compliance_response.json()["is_drifted"] is True
+    assert compliance_response.json()["compliance_status"] == "pending_apply"
     assert len(effective_response.json()["items"]) == 2
     assert {item["scope"] for item in effective_response.json()["items"]} == {"global", "group"}
     assert state_response.status_code == 200
@@ -586,6 +601,11 @@ def test_agent_register_inventory_and_execution_flow_on_database_backend(db_clie
     )
     token = register_response.json()["agent_token"]
     auth = {"Authorization": f"Bearer {token}"}
+    desired_state_response = db_client.get(
+        "/api/v1/agent/desired-state",
+        headers=auth,
+    )
+    desired_revision = desired_state_response.json()["revision"]
 
     inventory_response = db_client.put(
         "/api/v1/agent/inventory",
@@ -607,7 +627,7 @@ def test_agent_register_inventory_and_execution_flow_on_database_backend(db_clie
     run_response = db_client.post(
         "/api/v1/agent/execution-runs",
         headers=auth,
-        json={"state_revision": 1, "started_at": "2026-04-09T11:23:00Z"},
+        json={"state_revision": desired_revision, "started_at": "2026-04-09T11:23:00Z"},
     )
     run_id = run_response.json()["run_id"]
     events_response = db_client.post(
@@ -630,6 +650,10 @@ def test_agent_register_inventory_and_execution_flow_on_database_backend(db_clie
     admin_headers = _db_admin_headers(db_client)
     runs_response = db_client.get("/api/v1/admin/execution-runs", headers=admin_headers)
     hosts_response = db_client.get("/api/v1/admin/hosts", headers=admin_headers)
+    compliance_response = db_client.get(
+        f"/api/v1/admin/hosts/{register_response.json()['host_id']}/compliance",
+        headers=admin_headers,
+    )
 
     assert register_response.status_code == 201
     assert inventory_response.status_code == 200
@@ -639,6 +663,9 @@ def test_agent_register_inventory_and_execution_flow_on_database_backend(db_clie
     assert any(item["host_id"] == register_response.json()["host_id"] for item in hosts_response.json()["items"])
     assert any(item["run_id"] == run_id for item in runs_response.json()["items"])
     assert any(item["aggregate_status"] == "success" for item in runs_response.json()["items"] if item["run_id"] == run_id)
+    assert compliance_response.status_code == 200
+    assert compliance_response.json()["is_drifted"] is False
+    assert compliance_response.json()["compliance_status"] == "in_sync"
 
 
 def test_execution_runs_filter_by_failed_status_on_database_backend(db_client: TestClient) -> None:

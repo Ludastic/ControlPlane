@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Response, status
+from fastapi import APIRouter, Depends, Response, Security, status
 
 from app.api.admin.dependencies import require_admin_permission
 from app.api.dependencies import get_control_plane_service
+from app.api.security import admin_bearer_scheme, build_authorization_header
 from app.core import rbac
 from app.schemas.admin import (
     AdminLoginRequest,
@@ -19,6 +20,7 @@ from app.schemas.admin import (
     GroupListResponse,
     GroupResponse,
     GroupUpdateRequest,
+    HostComplianceResponse,
     HostListResponse,
     HostResponse,
     InventoryHistoryResponse,
@@ -72,19 +74,19 @@ def refresh(
 
 @auth_router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
-    authorization: str | None = Header(default=None),
+    credentials=Security(admin_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> Response:
-    service.admin_logout(authorization)
+    service.admin_logout(build_authorization_header(credentials))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @auth_router.get("/me", response_model=AdminMeResponse, dependencies=[read_access])
 def get_me(
-    authorization: str | None = Header(default=None),
+    credentials=Security(admin_bearer_scheme),
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)] = None,
 ) -> AdminMeResponse:
-    return service.get_admin_me(authorization)
+    return service.get_admin_me(build_authorization_header(credentials))
 
 
 @router.get("/hosts", response_model=HostListResponse)
@@ -160,6 +162,14 @@ def get_host_effective_policies(
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
 ) -> EffectivePoliciesResponse:
     return service.get_host_effective_policies(host_id)
+
+
+@router.get("/hosts/{host_id}/compliance", response_model=HostComplianceResponse)
+def get_host_compliance(
+    host_id: str,
+    service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
+) -> HostComplianceResponse:
+    return service.get_host_compliance(host_id)
 
 
 @router.get("/execution-runs", response_model=ExecutionRunListResponse)

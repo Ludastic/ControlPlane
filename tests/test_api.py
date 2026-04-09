@@ -32,6 +32,8 @@ def test_swagger_and_openapi_endpoints_are_available(client: TestClient) -> None
     assert openapi_response.status_code == 200
     assert openapi_response.json()["info"]["title"] == "Control Plane API"
     assert any(tag["name"] == "agent" for tag in openapi_response.json()["tags"])
+    assert "AdminBearerAuth" in openapi_response.json()["components"]["securitySchemes"]
+    assert "AgentBearerAuth" in openapi_response.json()["components"]["securitySchemes"]
 
 
 def test_readinesscheck_on_memory_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -199,6 +201,16 @@ def test_effective_policies_are_computed_from_assignments(client: TestClient) ->
     assert {item["scope"] for item in payload["items"]} == {"global", "group"}
 
 
+def test_host_compliance_exposes_drift_before_successful_apply(client: TestClient) -> None:
+    response = client.get("/api/v1/admin/hosts/host_demo_01/compliance", headers=_admin_headers(client))
+
+    assert response.status_code == 200
+    assert response.json()["host_id"] == "host_demo_01"
+    assert response.json()["is_drifted"] is True
+    assert response.json()["compliance_status"] == "pending_apply"
+    assert response.json()["last_successful_revision"] is None
+
+
 def test_groups_crud_flow(client: TestClient) -> None:
     admin_headers = _admin_headers(client)
     create_response = client.post("/api/v1/admin/groups", headers=admin_headers, json={"name": "Support", "description": "Support workstations"})
@@ -330,6 +342,7 @@ def test_agent_register_inventory_execution_flow(client: TestClient) -> None:
     auth = {"Authorization": f"Bearer {token}"}
 
     state_response = client.get("/api/v1/agent/desired-state", headers=auth)
+    desired_revision = state_response.json()["revision"]
     inventory_response = client.put(
         "/api/v1/agent/inventory",
         headers=auth,
@@ -350,7 +363,7 @@ def test_agent_register_inventory_execution_flow(client: TestClient) -> None:
     run_response = client.post(
         "/api/v1/agent/execution-runs",
         headers=auth,
-        json={"state_revision": 1, "started_at": "2026-04-09T11:23:00Z"},
+        json={"state_revision": desired_revision, "started_at": "2026-04-09T11:23:00Z"},
     )
     run_id = run_response.json()["run_id"]
     events_response = client.post(
@@ -371,6 +384,10 @@ def test_agent_register_inventory_execution_flow(client: TestClient) -> None:
         },
     )
     runs_response = client.get("/api/v1/admin/execution-runs", headers=_admin_headers(client))
+    compliance_response = client.get(
+        f"/api/v1/admin/hosts/{register_response.json()['host_id']}/compliance",
+        headers=_admin_headers(client),
+    )
 
     assert register_response.status_code == 201
     assert state_response.status_code == 200
@@ -380,6 +397,18 @@ def test_agent_register_inventory_execution_flow(client: TestClient) -> None:
     assert runs_response.status_code == 200
     assert runs_response.json()["total"] == 1
     assert runs_response.json()["items"][0]["aggregate_status"] == "success"
+    assert compliance_response.status_code == 200
+    assert compliance_response.json()["is_drifted"] is False
+    assert compliance_response.json()["compliance_status"] == "in_sync"
+
+
+def test_host_response_contains_compliance_fields(client: TestClient) -> None:
+    response = client.get("/api/v1/admin/hosts/host_demo_01", headers=_admin_headers(client))
+
+    assert response.status_code == 200
+    assert "is_drifted" in response.json()
+    assert "compliance_status" in response.json()
+    assert "desired_revision" in response.json()
 
 
 def test_inventory_history_respects_retention_limit(client: TestClient) -> None:

@@ -12,8 +12,7 @@ from app.core.rbac import has_permission
 from app.core.security import create_admin_token, decode_admin_token, extract_bearer_token, hash_agent_token, verify_password
 from app.core.settings import settings
 from app.repositories.in_memory import InMemoryRepository
-from app.schemas.admin import AdminLoginRequest, AdminLoginResponse, AdminMeResponse, AdminRefreshRequest, AdminTokenResponse, AgentTokenResponse, EffectivePoliciesResponse, ExecutionRunListResponse, GroupCreateRequest, GroupListResponse, GroupResponse, GroupUpdateRequest, HostListResponse, HostResponse, InventoryHistoryResponse, InventoryResponse, PlaybookCreateRequest, PlaybookListResponse, PlaybookResponse, PlaybookUpdateRequest, PlaybookVersionCreateRequest, PlaybookVersionListResponse, PlaybookVersionResponse, PolicyAssignmentCreateRequest, PolicyAssignmentListResponse, PolicyAssignmentResponse, PolicyCreateRequest, PolicyListResponse, PolicyResourceCreateRequest, PolicyResourceListResponse, PolicyResourceResponse, PolicyResourceUpdateRequest, PolicyResponse, PolicyUpdateRequest
-from app.schemas.admin import AuditLogListResponse
+from app.schemas.admin import AdminLoginRequest, AdminLoginResponse, AdminMeResponse, AdminRefreshRequest, AdminTokenResponse, AgentTokenResponse, AuditLogListResponse, EffectivePoliciesResponse, ExecutionRunListResponse, GroupCreateRequest, GroupListResponse, GroupResponse, GroupUpdateRequest, HostComplianceResponse, HostListResponse, HostResponse, InventoryHistoryResponse, InventoryResponse, PlaybookCreateRequest, PlaybookListResponse, PlaybookResponse, PlaybookUpdateRequest, PlaybookVersionCreateRequest, PlaybookVersionListResponse, PlaybookVersionResponse, PolicyAssignmentCreateRequest, PolicyAssignmentListResponse, PolicyAssignmentResponse, PolicyCreateRequest, PolicyListResponse, PolicyResourceCreateRequest, PolicyResourceListResponse, PolicyResourceResponse, PolicyResourceUpdateRequest, PolicyResponse, PolicyUpdateRequest
 from app.schemas.agent import AgentHeartbeatRequest, AgentHeartbeatResponse, AgentInventoryResponse, AgentRegistrationRequest, AgentRegistrationResponse, ArtifactMetadataResponse, ExecutionEventsRequest, ExecutionEventsResponse, ExecutionRunCreateRequest, ExecutionRunCreateResponse
 from app.schemas.desired_state import ArtifactRef, DesiredResource, DesiredState
 from app.services.composition import build_desired_state_payload
@@ -297,6 +296,9 @@ class ControlPlaneService:
     def get_host_effective_policies(self, host_id: str) -> EffectivePoliciesResponse:
         return self._admin_host_service.get_host_effective_policies(host_id)
 
+    def get_host_compliance(self, host_id: str) -> HostComplianceResponse:
+        return self._admin_host_service.get_host_compliance(host_id)
+
     def list_execution_runs(self, host_id: str | None = None, aggregate_status: str | None = None) -> ExecutionRunListResponse:
         return self._admin_host_service.list_execution_runs(host_id=host_id, aggregate_status=aggregate_status)
 
@@ -409,12 +411,17 @@ class ControlPlaneService:
         self._record_audit(actor=actor, action="policy.resource.delete", entity_type="policy_resource", entity_id=resource_id, details={"policy_id": policy_id})
 
     def _to_host_response(self, host: HostRecord) -> HostResponse:
+        compliance = self._admin_host_service.calculate_host_compliance(self._host_id(host))
         return HostResponse(
             host_id=self._host_id(host),
             agent_id=host.agent_id,
             hostname=host.hostname,
             fqdn=host.fqdn,
             status=host.status,
+            desired_revision=compliance["desired_revision"],
+            last_successful_revision=compliance["last_successful_revision"],
+            is_drifted=compliance["is_drifted"],
+            compliance_status=compliance["compliance_status"],
             registered_at=host.registered_at,
             last_seen_at=host.last_seen_at,
         )

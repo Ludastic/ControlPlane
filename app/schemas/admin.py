@@ -58,6 +58,10 @@ class HostResponse(BaseModel):
     hostname: str
     fqdn: str
     status: str
+    desired_revision: int = Field(ge=1)
+    last_successful_revision: int | None = Field(default=None, ge=1)
+    is_drifted: bool
+    compliance_status: str
     registered_at: datetime
     last_seen_at: datetime | None = None
 
@@ -65,6 +69,16 @@ class HostResponse(BaseModel):
 class HostListResponse(BaseModel):
     items: list[HostResponse]
     total: int = Field(ge=0)
+
+
+class HostComplianceResponse(BaseModel):
+    host_id: str
+    desired_revision: int = Field(ge=1)
+    last_successful_revision: int | None = Field(default=None, ge=1)
+    latest_run_revision: int | None = Field(default=None, ge=1)
+    latest_run_status: str | None = None
+    is_drifted: bool
+    compliance_status: str
 
 
 class InventoryResponse(BaseModel):

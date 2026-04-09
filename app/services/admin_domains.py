@@ -8,8 +8,8 @@ from app.core.errors import AppError
 from app.repositories.in_memory import InMemoryRepository
 from app.services.checksums import sha256_digest
 from app.services.artifact_storage import artifact_storage
-from app.services.composition import collect_applicable_policies
-from app.schemas.admin import EffectivePoliciesResponse, ExecutionRunListResponse, ExecutionRunResponse, GroupCreateRequest, GroupListResponse, GroupResponse, GroupUpdateRequest, InventoryHistoryItem, InventoryHistoryResponse, InventoryResponse, PlaybookCreateRequest, PlaybookListResponse, PlaybookResponse, PlaybookUpdateRequest, PlaybookVersionCreateRequest, PlaybookVersionListResponse, PlaybookVersionResponse, PolicyAssignmentCreateRequest, PolicyAssignmentListResponse, PolicyAssignmentResponse, PolicyCreateRequest, PolicyListResponse, PolicyResourceCreateRequest, PolicyResourceListResponse, PolicyResourceResponse, PolicyResourceUpdateRequest, PolicyResponse, PolicyUpdateRequest
+from app.services.composition import build_desired_state_payload, collect_applicable_policies
+from app.schemas.admin import EffectivePoliciesResponse, ExecutionRunListResponse, ExecutionRunResponse, GroupCreateRequest, GroupListResponse, GroupResponse, GroupUpdateRequest, HostComplianceResponse, InventoryHistoryItem, InventoryHistoryResponse, InventoryResponse, PlaybookCreateRequest, PlaybookListResponse, PlaybookResponse, PlaybookUpdateRequest, PlaybookVersionCreateRequest, PlaybookVersionListResponse, PlaybookVersionResponse, PolicyAssignmentCreateRequest, PolicyAssignmentListResponse, PolicyAssignmentResponse, PolicyCreateRequest, PolicyListResponse, PolicyResourceCreateRequest, PolicyResourceListResponse, PolicyResourceResponse, PolicyResourceUpdateRequest, PolicyResponse, PolicyUpdateRequest
 
 
 class AdminHostService:
@@ -29,6 +29,11 @@ class AdminHostService:
         if not self._repo.hosts.exists(host_id):
             raise AppError(status_code=status.HTTP_404_NOT_FOUND, code="HOST_NOT_FOUND", message="Host not found")
         return EffectivePoliciesResponse(host_id=host_id, items=collect_applicable_policies(self._repo, host_id))
+
+    def get_host_compliance(self, host_id: str) -> HostComplianceResponse:
+        if not self._repo.hosts.exists(host_id):
+            raise AppError(status_code=status.HTTP_404_NOT_FOUND, code="HOST_NOT_FOUND", message="Host not found")
+        return HostComplianceResponse(**self.calculate_host_compliance(host_id))
 
     def get_host_inventory_history(self, host_id: str, limit: int | None = None) -> InventoryHistoryResponse:
         if not self._repo.hosts.exists(host_id):
@@ -64,6 +69,43 @@ class AdminHostService:
                 )
             )
         return ExecutionRunListResponse(items=items, total=len(items))
+
+    def calculate_host_compliance(self, host_id: str) -> dict:
+        desired_revision = build_desired_state_payload(self._repo, host_id)["revision"]
+        host_runs = [
+            (run_id, run)
+            for run_id, run in self._repo.execution.list_all()
+            if run["host_id"] == host_id
+        ]
+        host_runs.sort(key=lambda item: item[1]["started_at"], reverse=True)
+        latest_run_id, latest_run = host_runs[0] if host_runs else (None, None)
+        latest_run_status = None if latest_run is None else self._aggregate_execution_status(latest_run)
+        latest_run_revision = None if latest_run is None else latest_run["state_revision"]
+
+        last_successful_revision = None
+        for _, run in host_runs:
+            if self._aggregate_execution_status(run) == "success":
+                last_successful_revision = run["state_revision"]
+                break
+
+        is_drifted = last_successful_revision != desired_revision
+        if not is_drifted:
+            compliance_status = "in_sync"
+        elif latest_run is not None and latest_run_revision == desired_revision and latest_run_status == "failed":
+            compliance_status = "apply_failed"
+        else:
+            compliance_status = "pending_apply"
+
+        return {
+            "host_id": host_id,
+            "desired_revision": desired_revision,
+            "last_successful_revision": last_successful_revision,
+            "latest_run_revision": latest_run_revision,
+            "latest_run_status": latest_run_status,
+            "is_drifted": is_drifted,
+            "compliance_status": compliance_status,
+            "latest_run_id": latest_run_id,
+        }
 
     def _aggregate_execution_status(self, run: dict) -> str:
         events = run.get("events", [])
