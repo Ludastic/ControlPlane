@@ -22,6 +22,18 @@ def test_healthcheck(client: TestClient) -> None:
     assert response.headers["x-request-id"]
 
 
+def test_swagger_and_openapi_endpoints_are_available(client: TestClient) -> None:
+    docs_response = client.get("/docs")
+    redoc_response = client.get("/redoc")
+    openapi_response = client.get("/openapi.json")
+
+    assert docs_response.status_code == 200
+    assert redoc_response.status_code == 200
+    assert openapi_response.status_code == 200
+    assert openapi_response.json()["info"]["title"] == "Control Plane API"
+    assert any(tag["name"] == "agent" for tag in openapi_response.json()["tags"])
+
+
 def test_readinesscheck_on_memory_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "storage_backend", "memory")
 

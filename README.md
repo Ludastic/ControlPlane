@@ -19,6 +19,8 @@ CONTROL_PLANE_AGENT_REGISTRATION_TOKEN=bootstrap-secret
 CONTROL_PLANE_INVENTORY_RETENTION_LIMIT=5
 CONTROL_PLANE_EXECUTION_RETENTION_DAYS=30
 CONTROL_PLANE_AUDIT_RETENTION_DAYS=90
+CONTROL_PLANE_BOOTSTRAP_ADMIN_USERNAME=
+CONTROL_PLANE_BOOTSTRAP_ADMIN_PASSWORD=
 ```
 
 `memory` backend is still available for isolated tests and local experiments:
@@ -48,6 +50,8 @@ docker compose up --build
 ```
 
 The API becomes available at `http://localhost:8000`, PostgreSQL at `localhost:5432`.
+
+Swagger UI is available at `http://localhost:8000/docs`, ReDoc at `http://localhost:8000/redoc`, and raw OpenAPI schema at `http://localhost:8000/openapi.json`.
 
 ## Test
 
@@ -81,6 +85,7 @@ docker compose run --rm api python -m app.jobs.cleanup
 ```
 
 In `production` mode the service rejects default bootstrap credentials on startup. Set non-default values for `CONTROL_PLANE_ADMIN_JWT_SECRET` and `CONTROL_PLANE_AGENT_REGISTRATION_TOKEN`.
+If `CONTROL_PLANE_BOOTSTRAP_ADMIN_USERNAME` and `CONTROL_PLANE_BOOTSTRAP_ADMIN_PASSWORD` are set, the service creates that admin user automatically on database startup if it does not already exist.
 
 ## API
 

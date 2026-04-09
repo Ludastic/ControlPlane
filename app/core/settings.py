@@ -5,8 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = Field(default="Control Plane API")
     app_version: str = Field(default="0.1.0")
+    app_description: str = Field(default="Control Plane backend for agent configuration management.")
     environment: str = Field(default="dev")
     api_v1_prefix: str = Field(default="/api/v1")
+    openapi_url: str = Field(default="/openapi.json")
+    docs_url: str = Field(default="/docs")
+    redoc_url: str = Field(default="/redoc")
     storage_backend: str = Field(default="database")
     database_url: str = Field(default="sqlite:///./control_plane.db")
     database_echo: bool = Field(default=False)
@@ -18,6 +22,8 @@ class Settings(BaseSettings):
     admin_jwt_secret: str = Field(default="dev-admin-secret")
     admin_access_token_ttl_seconds: int = Field(default=3600)
     admin_refresh_token_ttl_seconds: int = Field(default=86400)
+    bootstrap_admin_username: str | None = Field(default=None)
+    bootstrap_admin_password: str | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="CONTROL_PLANE_",

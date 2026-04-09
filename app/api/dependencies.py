@@ -3,7 +3,7 @@ from functools import lru_cache
 
 from app.core.settings import settings
 from app.db.init_db import ensure_schema_up_to_date
-from app.repositories.providers import build_sqlalchemy_repository_bundle
+from app.repositories.providers import build_sqlalchemy_repository_bundle, ensure_bootstrap_admin
 from app.services.control_plane_service import ControlPlaneService
 
 
@@ -19,6 +19,7 @@ def get_control_plane_service() -> Generator[ControlPlaneService, None, None]:
 
     ensure_schema_up_to_date()
     bundle = build_sqlalchemy_repository_bundle()
+    ensure_bootstrap_admin(bundle)
     service = ControlPlaneService(repository_bundle=bundle, seed_demo_data=False)
     try:
         yield service
