@@ -1,0 +1,24 @@
+[project]
+name = "control-plane"
+version = "0.1.0"
+description = "Control Plane backend service"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.32.0,<1.0.0",
+    "pydantic>=2.9.0,<3.0.0",
+    "pydantic-settings>=2.6.0,<3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28.0,<1.0.0",
+    "pytest>=8.3.0,<9.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=78.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
