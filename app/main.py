@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -7,6 +10,7 @@ from app.core.exception_handlers import register_exception_handlers
 from app.core.readiness import collect_readiness
 from app.core.request_logging import configure_request_logging
 from app.core.settings import settings
+from app.core.startup import initialize_runtime_components
 
 
 openapi_tags = [
@@ -17,6 +21,12 @@ openapi_tags = [
 ]
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    initialize_runtime_components()
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
@@ -25,6 +35,7 @@ app = FastAPI(
     docs_url=settings.docs_url,
     redoc_url=settings.redoc_url,
     openapi_tags=openapi_tags,
+    lifespan=lifespan,
 )
 validate_runtime_settings()
 register_exception_handlers(app)

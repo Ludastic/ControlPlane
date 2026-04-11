@@ -5,6 +5,7 @@ description = "Control Plane backend service"
 requires-python = ">=3.10"
 dependencies = [
     "alembic>=1.14.0,<2.0.0",
+    "boto3>=1.35.0,<2.0.0",
     "fastapi>=0.115.0,<1.0.0",
     "psycopg[binary]>=3.2.0,<4.0.0",
     "uvicorn[standard]>=0.32.0,<1.0.0",

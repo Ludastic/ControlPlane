@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-
 from sqlalchemy import text
 
 from app.core.settings import settings
@@ -12,15 +9,7 @@ from app.services.artifact_storage import artifact_storage
 
 
 def _artifact_storage_check() -> dict:
-    root = Path(artifact_storage.root)
-    try:
-        root.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile(dir=root, prefix=".ready-", delete=True) as temp_file:
-            temp_file.write(b"ok")
-            temp_file.flush()
-        return {"status": "ok", "root": str(root)}
-    except Exception as exc:
-        return {"status": "failed", "root": str(root), "error": str(exc)}
+    return artifact_storage.healthcheck()
 
 
 def _database_check() -> dict:

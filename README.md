@@ -14,7 +14,13 @@ Default runtime uses the `database` backend with local SQLite:
 ```text
 CONTROL_PLANE_STORAGE_BACKEND=database
 CONTROL_PLANE_DATABASE_URL=sqlite:///./control_plane.db
+CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=local
 CONTROL_PLANE_ARTIFACTS_ROOT=.artifacts
+CONTROL_PLANE_S3_ENDPOINT_URL=
+CONTROL_PLANE_S3_BUCKET=
+CONTROL_PLANE_S3_ACCESS_KEY=
+CONTROL_PLANE_S3_SECRET_KEY=
+CONTROL_PLANE_S3_REGION=us-east-1
 CONTROL_PLANE_AGENT_REGISTRATION_TOKEN=bootstrap-secret
 CONTROL_PLANE_INVENTORY_RETENTION_LIMIT=5
 CONTROL_PLANE_EXECUTION_RETENTION_DAYS=30
@@ -49,9 +55,27 @@ Local Docker stack with PostgreSQL:
 docker compose up --build
 ```
 
-The API becomes available at `http://localhost:8000`, PostgreSQL at `localhost:5432`.
+The API becomes available at `http://localhost:8000`, PostgreSQL at `localhost:5432`, MinIO S3 API at `http://localhost:9000`, and MinIO console at `http://localhost:9001`.
 
 Swagger UI is available at `http://localhost:8000/docs`, ReDoc at `http://localhost:8000/redoc`, and raw OpenAPI schema at `http://localhost:8000/openapi.json`.
+
+## Artifact Storage
+
+Playbook artifacts now support two backends:
+
+- `local` via `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=local` and `CONTROL_PLANE_ARTIFACTS_ROOT`
+- `s3` via MinIO/S3-compatible storage:
+
+```text
+CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=s3
+CONTROL_PLANE_S3_ENDPOINT_URL=http://localhost:9000
+CONTROL_PLANE_S3_BUCKET=control-plane-playbooks
+CONTROL_PLANE_S3_ACCESS_KEY=minioadmin
+CONTROL_PLANE_S3_SECRET_KEY=minioadmin
+CONTROL_PLANE_S3_REGION=us-east-1
+```
+
+The provided `docker-compose.yml` uses MinIO as the artifact storage backend for playbooks.
 
 ## Test
 
@@ -70,6 +94,23 @@ Optional PostgreSQL verification:
 ```powershell
 $env:CONTROL_PLANE_POSTGRES_TEST_URL='postgresql+psycopg://postgres:postgres@localhost:5432/control_plane_test'
 .\.venv\Scripts\python.exe -m pytest -q tests/test_api_postgres.py
+```
+
+Optional MinIO/S3 artifact storage verification:
+
+```powershell
+$env:CONTROL_PLANE_MINIO_TEST_ENDPOINT_URL='http://localhost:9000'
+$env:CONTROL_PLANE_MINIO_TEST_BUCKET='control-plane-test'
+$env:CONTROL_PLANE_MINIO_TEST_ACCESS_KEY='minioadmin'
+$env:CONTROL_PLANE_MINIO_TEST_SECRET_KEY='minioadmin'
+.\.venv\Scripts\python.exe -m pytest -q tests/test_artifact_storage_minio.py
+```
+
+Optional end-to-end verification against a running `docker compose` stack:
+
+```powershell
+$env:CONTROL_PLANE_STACK_API_URL='http://localhost:8000'
+.\.venv\Scripts\python.exe -m pytest -q tests/test_api_minio_stack.py
 ```
 
 Cleanup jobs:
